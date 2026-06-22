@@ -1,0 +1,31 @@
+name: Mise à jour automatique des sources
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # S'exécute tous les jours à 02h00 du matin (UTC)
+  workflow_dispatch: # Permet de lancer le script manuellement avec un bouton
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: Configurer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Exécuter le script de filtrage
+        run: python filter.py
+
+      - name: Sauvegarder les changements sur GitHub
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add index.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour auto : synchro avec le répertoire officiel" && git push)
