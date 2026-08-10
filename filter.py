@@ -1,10 +1,13 @@
 import json
 import urllib.request
+import urllib.parse
 
-# Remplace ceci par l'URL du répertoire Aidoku officiel que tu utilisais
-OFFICIAL_URL = "https://aidoku-community.github.io/sources/index.min.json" 
+# URL officielle du JSON source
+OFFICIAL_URL = "https://aidoku-community.github.io/sources/index.min.json"
+# URL de base officielle pour retrouver les fichiers .aix et icônes d'origine
+OFFICIAL_BASE_URL = "https://aidoku-community.github.io/sources/"
 
-# Liste des mots-clés à bannir (basé sur ta demande)
+# Liste des mots-clés à bannir
 BANNED_KEYWORDS = [
     "e-hentai", "hitomi.la", "myreadingmanga", "myrockmanga", 
     "simplyhentai", "nhentai", "armageddon", "athrea scans", 
@@ -20,16 +23,21 @@ def filter_sources():
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode('utf-8'))
 
-        # 2. Filtrer les sources
+        # 2. Filtrer les sources et rendre les liens absolus
         filtered_sources = []
         for source in data.get("sources", []):
             name_lower = source.get("name", "").lower()
             id_lower = source.get("id", "").lower()
             
-            # Vérifier si un des mots-clés bannis est dans le nom ou l'ID
             is_banned = any(banned in name_lower or banned in id_lower for banned in BANNED_KEYWORDS)
             
             if not is_banned:
+                # Transformer les liens relatifs en liens absolus vers le serveur officiel
+                if "downloadURL" in source and not source["downloadURL"].startswith("http"):
+                    source["downloadURL"] = urllib.parse.urljoin(OFFICIAL_BASE_URL, source["downloadURL"])
+                if "iconURL" in source and not source["iconURL"].startswith("http"):
+                    source["iconURL"] = urllib.parse.urljoin(OFFICIAL_BASE_URL, source["iconURL"])
+                    
                 filtered_sources.append(source)
         
         data["sources"] = filtered_sources
