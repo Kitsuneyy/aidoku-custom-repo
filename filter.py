@@ -17,6 +17,62 @@ BANNED_KEYWORDS = [
     "danke fürs lesen"
 ]
 
+# Listes tierces ajoutées : seules les sources tout public (rating 0) sont reprises
+EXTRA_LISTS = [
+    "https://moomooo95.github.io/aidoku-french-sources/index.min.json",
+    "https://raw.githubusercontent.com/suiyuran/aidoku-zh-sources/refs/heads/main/public/index.min.json",
+]
+
+# Doublons d'un site déjà couvert par la liste officielle sous un autre id
+EXTRA_SKIP_IDS = {"zh.baozimh1", "zh.baozimh2", "zh.bilicomic", "zh.zerobywns"}
+
+
+def fetch_json(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
+def is_banned(source):
+    name_lower = source.get("name", "").lower()
+    id_lower = source.get("id", "").lower()
+    return any(banned in name_lower or banned in id_lower for banned in BANNED_KEYWORDS)
+
+
+def extra_sources(known_ids):
+    """Récupère les sources tout public des listes tierces, converties au format 0.7+."""
+    result = []
+    for list_url in EXTRA_LISTS:
+        try:
+            data = fetch_json(list_url)
+        except Exception as e:
+            print(f"Liste ignorée ({list_url}) : {e}")
+            continue
+        base = list_url.rsplit("/", 1)[0] + "/"
+        entries = data.get("sources", []) if isinstance(data, dict) else data
+        for s in entries:
+            sid = s.get("id", "")
+            rating = s.get("contentRating", s.get("nsfw", 0))
+            if rating != 0 or sid in known_ids or sid in EXTRA_SKIP_IDS or is_banned(s):
+                continue
+            if "file" in s:  # ancien format -> nouveau format
+                s = {
+                    "id": sid,
+                    "name": s.get("name", sid),
+                    "version": s.get("version", 1),
+                    "iconURL": urllib.parse.urljoin(base, "icons/" + s["icon"]),
+                    "downloadURL": urllib.parse.urljoin(base, "sources/" + s["file"]),
+                    "languages": [s.get("lang", "multi")],
+                    "contentRating": 0,
+                }
+            else:
+                for key in ("downloadURL", "iconURL"):
+                    if key in s and not s[key].startswith("http"):
+                        s[key] = urllib.parse.urljoin(base, s[key])
+            known_ids.add(sid)
+            result.append(s)
+    return result
+
 def filter_sources():
     try:
         # 1. Télécharger le JSON officiel
@@ -47,6 +103,9 @@ def filter_sources():
                     
                 filtered_sources.append(source)
         
+        known_ids = {s.get("id") for s in data.get("sources", [])}
+        filtered_sources.extend(extra_sources(known_ids))
+        filtered_sources.sort(key=lambda s: s.get("id", ""))
         data["sources"] = filtered_sources
 
         # 3. Sauvegarder dans le fichier index.json local
